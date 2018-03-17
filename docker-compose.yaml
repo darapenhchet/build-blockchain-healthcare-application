@@ -1,0 +1,198 @@
+version: '2'
+
+services:
+  insurance-ca:
+    container_name: insurance-ca
+    extends:
+      file: ./ca-base.yaml
+      service: ca-base
+    image: insurance-ca
+    ports:
+    - 7054:7054
+
+  hospital-ca:
+    container_name: hospital-ca
+    extends:
+      file: ./ca-base.yaml
+      service: ca-base
+    image: hospital-ca
+    ports:
+    - 8054:7054
+
+  orderer0:
+    container_name: orderer0
+    image: orderer
+    environment:
+    - ORDERER_GENERAL_LOGLEVEL=debug
+    - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
+    - ORDERER_GENERAL_GENESISMETHOD=file
+    - ORDERER_GENERAL_GENESISFILE=/orderer/crypto/genesis.block
+    - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
+    - ORDERER_GENERAL_LOCALMSPDIR=/orderer/crypto/msp
+    # - ORDERER_GENERAL_TLS_ENABLED=true
+    # - ORDERER_GENERAL_TLS_PRIVATEKEY=/orderer/crypto/tls/server.key
+    # - ORDERER_GENERAL_TLS_CERTIFICATE=/orderer/crypto/tls/server.crt
+    # - ORDERER_GENERAL_TLS_ROOTCAS=[/orderer/crypto/tls/ca.crt]
+    working_dir: /orderer
+    command: orderer
+    ports:
+    - 7050:7050
+
+  insurance-peer:
+    container_name: insurance-peer
+    extends:
+      file: ./peer-base.yaml
+      service: peer-base
+    image: insurance-peer
+    environment:
+    - CORE_PEER_ID=insurance-peer
+    - CORE_PEER_ADDRESS=insurance-peer:7051
+    - CORE_PEER_GOSSIP_EXTERNALENDPOINT=insurance-peer:7051
+    - CORE_PEER_LOCALMSPID=InsuranceOrgMSP
+    ports:
+    - 7051:7051
+    - 7053:7053
+    depends_on:
+    - orderer0
+
+  hospital-peer:
+    container_name: hospital-peer
+    extends:
+      file: ./peer-base.yaml
+      service: peer-base
+    image: hospital-peer
+    environment:
+    - CORE_PEER_ID=hospital-peer
+    - CORE_PEER_ADDRESS=hospital-peer:7051
+    - CORE_PEER_GOSSIP_EXTERNALENDPOINT=hospital-peer:7051
+    - CORE_PEER_LOCALMSPID=HospitalOrgMSP
+    ports:
+    - 8051:7051
+    - 8053:7053
+    depends_on:
+    - orderer0
+    - insurance-peer
+
+  insurance.cli:
+    container_name: insurance.cli
+    image: hyperledger/fabric-tools
+    tty: true
+    environment:
+      - GOPATH=/opt/gopath
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_LOGGING_LEVEL=DEBUG
+      - CORE_PEER_ID=insurance.cli
+      # ---CHANGED--- peer0 from Org1 is the default for this CLI container
+      - CORE_PEER_ADDRESS=insurance-peer:7051
+      - CORE_PEER_LOCALMSPID=InsuranceOrgMSP
+      # - CORE_PEER_TLS_ENABLED=true
+      # # ---CHANGED--- changed to reflect peer0 name, org1 name and our company's domain
+      # - CORE_PEER_TLS_CERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.acme.com/peers/peer0.org1.acme.com/tls/server.crt
+      # # ---CHANGED--- changed to reflect peer0 name, org1 name and our company's domain
+      # - CORE_PEER_TLS_KEY_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.acme.com/peers/peer0.org1.acme.com/tls/server.key
+      # # ---CHANGED--- changed to reflect peer0 name, org1 name and our company's domain
+      # - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.acme.com/peers/peer0.org1.acme.com/tls/ca.crt
+      # ---CHANGED--- changed to reflect peer0 name, org1 name and our company's domain
+      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/insurance-org/users/Admin@insurance-org/msp
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    # ---CHANGED--- command needs to be connected out as we will be issuing commands explicitly, not using by any script
+    # command: /bin/bash -c './scripts/script.sh ${CHANNEL_NAME}; sleep $TIMEOUT'
+    volumes:
+        - /var/run/:/host/var/run/
+        - ./crypto-config/peers:/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/
+        - ./channels:/opt/gopath/src/github.com/hyperledger/fabric/peer/channels
+        - ./chaincode:/opt/gopath/src/
+    depends_on:
+      - orderer0
+      - insurance-peer
+      - hospital-peer
+    
+  # hospital.cli:
+  #   container_name: hospital.cli
+  #   image: hyperledger/fabric-tools
+  #   tty: true
+  #   environment:
+  #     - GOPATH=/opt/gopath
+  #     - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+  #     - CORE_LOGGING_LEVEL=DEBUG
+  #     - CORE_PEER_ID=hospital.cli
+  #     # ---CHANGED--- peer0 from Org1 is the default for this CLI container
+  #     - CORE_PEER_ADDRESS=hospital-peer:7051
+  #     - CORE_PEER_LOCALMSPID=HospitalOrgMSP
+  #     # - CORE_PEER_TLS_ENABLED=true
+  #     # # ---CHANGED--- changed to reflect peer0 name, org1 name and our company's domain
+  #     # - CORE_PEER_TLS_CERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.acme.com/peers/peer0.org1.acme.com/tls/server.crt
+  #     # # ---CHANGED--- changed to reflect peer0 name, org1 name and our company's domain
+  #     # - CORE_PEER_TLS_KEY_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.acme.com/peers/peer0.org1.acme.com/tls/server.key
+  #     # # ---CHANGED--- changed to reflect peer0 name, org1 name and our company's domain
+  #     # - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.acme.com/peers/peer0.org1.acme.com/tls/ca.crt
+  #     # ---CHANGED--- changed to reflect peer0 name, org1 name and our company's domain
+  #     - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/hospital-org/users/Admin@hospital-org/msp
+  #   working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+  #   # ---CHANGED--- command needs to be connected out as we will be issuing commands explicitly, not using by any script
+  #   # command: /bin/bash -c './scripts/script.sh ${CHANNEL_NAME}; sleep $TIMEOUT'
+  #   volumes:
+  #       - /var/run/:/host/var/run/
+  #       - ./crypto-config/peers:/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/
+  #       - ./channels:/opt/gopath/src/github.com/hyperledger/fabric/peer/channels
+  #   depends_on:
+  #     - orderer0
+  #     - hospital-peer
+      
+  # insurance.cli:
+  #   container_name: insurance.cli
+  #   image: insurance-cli
+  #   tty: true
+  #   environment:
+  #     - GOPATH=/opt/gopath
+  #     - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+  #     - CORE_LOGGING_LEVEL=DEBUG
+  #     - CORE_PEER_ID=insurance-cli
+  #     - CORE_PEER_ADDRESS=insurance-peer:7051
+  #     - CORE_PEER_LOCALMSPID=InsuranceOrgMSP
+  #     - CORE_PEER_MSPCONFIGPATH=/peer/crypto/msp
+  #     # - CORE_PEER_TLS_ENABLED=true
+  #     # - CORE_PEER_TLS_CERT_FILE=/peer/crypto/tls/server.crt
+  #     # - CORE_PEER_TLS_KEY_FILE=/peer/crypto/tls/server.key
+  #     # - CORE_PEER_TLS_ROOTCERT_FILE=/peer/crypto/tls/ca.crt
+  #     - CORE_CHAINCODE_KEEPALIVE=10
+  #   working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+  #   command: /bin/bash
+  #   volumes:
+  #       - /var/run/:/host/var/run/
+  #       - ./orderer/crypto/:/opt/gopath/src/github.com/hyperledger/fabric/peer/orderer/
+  #       - ./chaincode:/opt/gopath/src/
+  #       - ./channels/:/opt/gopath/src/github.com/hyperledger/fabric/peer/channels
+  #   depends_on:
+  #     - orderer0
+  #     - insurance-ca
+  #     - insurance-peer
+
+  # hospital.cli:
+  #   container_name: hospital.cli
+  #   image: hospital-cli
+  #   tty: true
+  #   environment:
+  #     - GOPATH=/opt/gopath
+  #     - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+  #     - CORE_LOGGING_LEVEL=DEBUG
+  #     - CORE_PEER_ID=hospital-cli
+  #     - CORE_PEER_ADDRESS=hospital-peer:7051
+  #     - CORE_PEER_LOCALMSPID=HospitalOrgMSP
+  #     - CORE_PEER_MSPCONFIGPATH=/peer/crypto/msp
+  #     # - CORE_PEER_TLS_ENABLED=true
+  #     # - CORE_PEER_TLS_CERT_FILE=/peer/crypto/tls/server.crt
+  #     # - CORE_PEER_TLS_KEY_FILE=/peer/crypto/tls/server.key
+  #     # - CORE_PEER_TLS_ROOTCERT_FILE=/peer/crypto/tls/ca.crt
+  #     - CORE_CHAINCODE_KEEPALIVE=10
+  #   working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+  #   command: /bin/bash
+  #   volumes:
+  #       - /var/run/:/host/var/run/
+  #       - ./orderer/crypto/:/opt/gopath/src/github.com/hyperledger/fabric/peer/orderer/
+  #       - ./chaincode:/opt/gopath/src/
+  #       - ./channels/:/opt/gopath/src/github.com/hyperledger/fabric/peer/channels
+  #   depends_on:
+  #     - orderer0
+  #     - hospital-ca
+  #     - hospital-peer
